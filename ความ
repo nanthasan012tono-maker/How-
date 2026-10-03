@@ -1,0 +1,59 @@
+-- ---------------------------------------------------------
+-- ระบบลูปการทำงาน "ดูดของระยะไกล" แบบเจาะลึกทุกโฟลเดอร์
+-- ---------------------------------------------------------
+runService.RenderStepped:Connect(function()
+    if not itemMagnetEnabled then return end
+    
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local rootPart = character.HumanoidRootPart
+    
+    -- ฟังก์ชันค้นหาและดูดไอเทมจากทุกซอกทุกมุมใน Workspace
+    local function scanAndPull(parentObj)
+        for _, obj in ipairs(parentObj:GetChildren()) do
+            -- ข้ามโฟลเดอร์ตัวละครของผู้เล่นคนอื่นเพื่อไม่ให้เกิดบัณ
+            if obj ~= character and not players:GetPlayerFromCharacter(obj) then
+                local targetPart = nil
+                
+                if obj:IsA("Tool") and obj:FindFirstChild("Handle") then
+                    targetPart = obj.Handle
+                elseif obj:IsA("Model") then
+                    -- หาชิ้นส่วนหลัก หรือส่วนประกอบที่จะดึง
+                    if obj.PrimaryPart then
+                        targetPart = obj.PrimaryPart
+                    elseif obj:FindFirstChild("Handle") then
+                        targetPart = obj.Handle
+                    elseif obj:FindFirstChild("Part") then
+                        targetPart = obj.Part
+                    elseif obj:FindFirstChild("HumanoidRootPart") then
+                        targetPart = obj.HumanoidRootPart
+                    end
+                elseif obj:IsA("BasePart") then
+                    targetPart = obj
+                end
+                
+                if targetPart then
+                    local success, distance = pcall(function()
+                        return (targetPart.Position - rootPart.Position).Magnitude
+                    end)
+                    
+                    -- ถ้าระยะห่างอยู่ในรัศมีที่กำหนด ให้ดึงพิกัดมาติดกับตัวเราทันที
+                    if success and distance <= magnetDistance and distance > 1 then
+                        pcall(function()
+                            targetPart.CFrame = rootPart.CFrame
+                            targetPart.Velocity = Vector3.new(0, 0, 0)
+                            targetPart.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        end)
+                    end
+                end
+                
+                -- ค้นหาลึกลงไปในโฟลเดอร์ย่อย (Recursive)
+                if #obj:GetChildren() > 0 and not obj:IsA("Player") then
+                    scanAndPull(obj)
+                end
+            end
+        end
+    end
+    
+    scanAndPull(workspace)
+end)
