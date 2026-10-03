@@ -1,0 +1,248 @@
+-- บริการและตัวแปรหลัก
+local players = game:GetService("Players")
+local teleportService = game:GetService("TeleportService")
+local userInputService = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+local camera = workspace.CurrentCamera
+
+local localPlayer = players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+local correctPassword = "tono"
+
+-- รายชื่อเพื่อนที่ยกเว้นการล็อค (เก็บชื่อที่พิมพ์เข้ามา)
+local whitelistedFriends = {}
+
+-- สถานะระบบดูดของ
+local itemMagnetEnabled = false
+
+-- สร้างหน้าจอหลัก (ScreenGui)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CustomModernMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- ---------------------------------------------------------
+-- ปุ่มวงกลมลอยได้ (Floating Toggle Button) สำหรับเปิด/ปิดเมนู
+-- ---------------------------------------------------------
+local floatingBtn = Instance.new("TextButton")
+floatingBtn.Size = UDim2.new(0, 50, 0, 50)
+floatingBtn.Position = UDim2.new(0, 30, 0.4, 0)
+floatingBtn.BackgroundColor3 = Color3.fromRGB(25, 22, 35)
+floatingBtn.Text = "💥"
+floatingBtn.TextSize = 22
+floatingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+floatingBtn.AutoButtonColor = false
+floatingBtn.Parent = screenGui
+
+local floatCorner = Instance.new("UICorner")
+floatCorner.CornerRadius = UDim.new(1, 0)
+floatCorner.Parent = floatingBtn
+
+local floatStroke = Instance.new("UIStroke")
+floatStroke.Color = Color3.fromRGB(120, 70, 180)
+floatStroke.Thickness = 2
+floatStroke.Parent = floatingBtn
+
+-- ระบบลากปุ่มวงกลมไปวางไว้ตรงไหนก็ได้ (Draggable)
+local dragging, dragInput, dragStart, startPos
+
+floatingBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = floatingBtn.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+floatingBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+userInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        floatingBtn.Position = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + delta.X, 
+            startPos.Y.Scale, 
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ---------------------------------------------------------
+-- กรอบเมนูหลักสไตล์โมเดิร์น (โทนสีดำ-ม่วงเข้ม)
+-- ---------------------------------------------------------
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 480, 0, 440)
+mainFrame.Position = UDim2.new(0.5, -240, 0.5, -220)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false -- ซ่อนไว้ก่อน รอพิมพ์รหัสผ่านถูกต้อง
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(80, 50, 120)
+mainStroke.Thickness = 1.5
+mainStroke.Parent = mainFrame
+
+-- แถบเมนูด้านซ้าย (Sidebar)
+local sideBar = Instance.new("Frame")
+sideBar.Size = UDim2.new(0, 45, 1, 0)
+sideBar.BackgroundColor3 = Color3.fromRGB(15, 14, 20)
+sideBar.BorderSizePixel = 0
+sideBar.Parent = mainFrame
+
+local sideCorner = Instance.new("UICorner")
+sideCorner.CornerRadius = UDim.new(0, 8)
+sideCorner.Parent = sideBar
+
+local logoLabel = Instance.new("TextLabel")
+logoLabel.Size = UDim2.new(0, 45, 0, 45)
+logoLabel.BackgroundTransparency = 1
+logoLabel.Text = "💥"
+logoLabel.TextSize = 20
+logoLabel.Parent = sideBar
+
+-- ช่องค้นหาด้านบน พร้อมหัวข้อ "ไม่แจกแตกหมด"
+local searchBar = Instance.new("TextBox")
+searchBar.Size = UDim2.new(1, -60, 0, 30)
+searchBar.Position = UDim2.new(0, 55, 0, 10)
+searchBar.BackgroundColor3 = Color3.fromRGB(30, 26, 40)
+searchBar.Text = "ไม่แจกแตกหมด"
+searchBar.TextColor3 = Color3.fromRGB(255, 200, 50)
+searchBar.TextSize = 14
+searchBar.Font = Enum.Font.SourceSansBold
+searchBar.Parent = mainFrame
+
+local searchCorner = Instance.new("UICorner")
+searchCorner.CornerRadius = UDim.new(0, 6)
+searchCorner.Parent = searchBar
+
+-- ---------------------------------------------------------
+-- หน้าต่างใส่รหัสผ่าน (Login View)
+-- ---------------------------------------------------------
+local loginContainer = Instance.new("Frame")
+loginContainer.Size = UDim2.new(1, -55, 1, -50)
+loginContainer.Position = UDim2.new(0, 50, 0, 45)
+loginContainer.BackgroundTransparency = 1
+loginContainer.Parent = mainFrame
+
+local passBox = Instance.new("TextBox")
+passBox.Size = UDim2.new(0.6, 0, 0, 35)
+passBox.Position = UDim2.new(0.2, 0, 0.3, 0)
+passBox.BackgroundColor3 = Color3.fromRGB(30, 26, 40)
+passBox.PlaceholderText = "กรุณาใส่รหัสผ่าน..."
+passBox.Text = ""
+passBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+passBox.TextSize = 14
+passBox.Font = Enum.Font.SourceSans
+passBox.Parent = loginContainer
+
+local passCorner = Instance.new("UICorner")
+passCorner.CornerRadius = UDim.new(0, 6)
+passCorner.Parent = passBox
+
+local loginBtn = Instance.new("TextButton")
+loginBtn.Size = UDim2.new(0.4, 0, 0, 35)
+loginBtn.Position = UDim2.new(0.3, 0, 0.45, 0)
+loginBtn.BackgroundColor3 = Color3.fromRGB(100, 50, 160)
+loginBtn.Text = "เข้าสู่ระบบ"
+loginBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+loginBtn.TextSize = 14
+loginBtn.Font = Enum.Font.SourceSansBold
+loginBtn.Parent = loginContainer
+
+local loginCorner = Instance.new("UICorner")
+loginCorner.CornerRadius = UDim.new(0, 6)
+loginCorner.Parent = loginBtn
+
+-- ---------------------------------------------------------
+-- หน้าต่างเมนูหลัก (Dashboard View หลังจาก Login ผ่าน)
+-- ---------------------------------------------------------
+local dashboardContainer = Instance.new("ScrollingFrame")
+dashboardContainer.Size = UDim2.new(1, -65, 1, -60)
+dashboardContainer.Position = UDim2.new(0, 55, 0, 50)
+dashboardContainer.BackgroundTransparency = 1
+dashboardContainer.Visible = false
+dashboardContainer.CanvasSize = UDim2.new(0, 0, 0, 400)
+dashboardContainer.ScrollBarThickness = 4
+dashboardContainer.Parent = mainFrame
+
+-- ปุ่มเปิด/ปิด ระบบดูดของ (Item Magnet Toggle)
+local magnetToggleBtn = Instance.new("TextButton")
+magnetToggleBtn.Size = UDim2.new(0.9, 0, 0, 40)
+magnetToggleBtn.Position = UDim2.new(0.05, 0, 0.05, 0)
+magnetToggleBtn.BackgroundColor3 = Color3.fromRGB(40, 30, 55)
+magnetToggleBtn.Text = "ดูดของ (Item Magnet): ปิด"
+magnetToggleBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+magnetToggleBtn.TextSize = 14
+magnetToggleBtn.Font = Enum.Font.SourceSansBold
+magnetToggleBtn.Parent = dashboardContainer
+
+local magnetCorner = Instance.new("UICorner")
+magnetCorner.CornerRadius = UDim.new(0, 6)
+magnetCorner.Parent = magnetToggleBtn
+
+-- ฟังก์ชันกดปุ่มเปิด/ปิดเมนูหลัก
+floatingBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- ตรวจสอบรหัสผ่าน
+loginBtn.MouseButton1Click:Connect(function()
+    if passBox.Text == correctPassword then
+        loginContainer.Visible = false
+        dashboardContainer.Visible = true
+    else
+        passBox.Text = ""
+        passBox.PlaceholderText = "รหัสผ่านไม่ถูกต้อง!"
+    end
+end)
+
+-- สลับสถานะปุ่มดูดของ
+magnetToggleBtn.MouseButton1Click:Connect(function()
+    itemMagnetEnabled = not itemMagnetEnabled
+    if itemMagnetEnabled then
+        magnetToggleBtn.Text = "ดูดของ (Item Magnet): เปิด"
+        magnetToggleBtn.TextColor3 = Color3.fromRGB(100, 255, 100)
+    else
+        magnetToggleBtn.Text = "ดูดของ (Item Magnet): ปิด"
+        magnetToggleBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+end)
+
+-- ---------------------------------------------------------
+-- ระบบลูปการทำงาน "ดูดของ" (Item Magnet Loop)
+-- ---------------------------------------------------------
+runService.RenderStepped:Connect(function()
+    if not itemMagnetEnabled then return end
+    
+    local character = localPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+    local rootPart = character.HumanoidRootPart
+    
+    -- ค้นหา Tool หรือ Model ที่ตกอยู่บนพื้น (Workspace)
+    for _, obj in ipairs(workspace:GetChildren()) do
+        if obj:IsA("Tool") and obj:FindFirstChild("Handle") then
+            -- ดึง Handle ของไอเทมเข้ามาหาตัวผู้เล่น
+            obj.Handle.CFrame = rootPart.CFrame
+            -- หากเกมรองรับการสัมผัสเพื่อเก็บ สามารถสั่งให้ตัวละครเดินไปชน หรือเซ็ต Velocity เป็นศูนย์ได้
+            obj.Handle.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+end)
