@@ -1,0 +1,340 @@
+-- บริการและตัวแปรหลัก
+local players = game:GetService("Players")
+local teleportService = game:GetService("TeleportService")
+local userInputService = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local workspace = game:GetService("Workspace")
+local camera = workspace.CurrentCamera
+
+local localPlayer = players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
+
+local correctPassword = "tono"
+
+-- รายชื่อเพื่อนที่ยกเว้น (ช่องใครช่องมัน เก็บเป็นตารางชื่อ)
+local whitelistedFriends = {}
+
+-- สร้างหน้าจอหลัก (ScreenGui)
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "CustomModernMenu"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = playerGui
+
+-- ---------------------------------------------------------
+-- ปุ่มวงกลมลอยได้ (Floating Toggle Button) สำหรับเปิด/ปิดเมนู
+-- ---------------------------------------------------------
+local floatingBtn = Instance.new("TextButton")
+floatingBtn.Size = UDim2.new(0, 50, 0, 50)
+floatingBtn.Position = UDim2.new(0, 30, 0.4, 0)
+floatingBtn.BackgroundColor3 = Color3.fromRGB(25, 22, 35)
+floatingBtn.Text = "💥"
+floatingBtn.TextSize = 22
+floatingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+floatingBtn.AutoButtonColor = false
+floatingBtn.Parent = screenGui
+
+local floatCorner = Instance.new("UICorner")
+floatCorner.CornerRadius = UDim.new(1, 0)
+floatCorner.Parent = floatingBtn
+
+local floatStroke = Instance.new("UIStroke")
+floatStroke.Color = Color3.fromRGB(120, 70, 180)
+floatStroke.Thickness = 2
+floatStroke.Parent = floatingBtn
+
+-- ระบบลากปุ่มวงกลมไปวางไว้ตรงไหนก็ได้ (Draggable)
+local dragging, dragInput, dragStart, startPos
+
+floatingBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = floatingBtn.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+floatingBtn.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+userInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        floatingBtn.Position = UDim2.new(
+            startPos.X.Scale, 
+            startPos.X.Offset + delta.X, 
+            startPos.Y.Scale, 
+            startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ---------------------------------------------------------
+-- กรอบเมนูหลักสไตล์โมเดิร์น (โทนสีดำ-ม่วงเข้ม)
+-- ---------------------------------------------------------
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 480, 0, 460)
+mainFrame.Position = UDim2.new(0.5, -240, 0.5, -230)
+mainFrame.BackgroundColor3 = Color3.fromRGB(20, 18, 25)
+mainFrame.BorderSizePixel = 0
+mainFrame.Visible = false
+mainFrame.Parent = screenGui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 8)
+mainCorner.Parent = mainFrame
+
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Color = Color3.fromRGB(80, 50, 120)
+mainStroke.Thickness = 1.5
+mainStroke.Parent = mainFrame
+
+-- ปุ่มกดเปิด-ปิด เมนูหลักผ่านปุ่มวงกลมลอย
+floatingBtn.MouseButton1Click:Connect(function()
+    mainFrame.Visible = not mainFrame.Visible
+end)
+
+-- แถบเมนูด้านซ้าย (Sidebar)
+local sideBar = Instance.new("Frame")
+sideBar.Size = UDim2.new(0, 45, 1, 0)
+sideBar.BackgroundColor3 = Color3.fromRGB(15, 14, 20)
+sideBar.BorderSizePixel = 0
+sideBar.Parent = mainFrame
+
+local sideCorner = Instance.new("UICorner")
+sideCorner.CornerRadius = UDim.new(0, 8)
+sideCorner.Parent = sideBar
+
+-- โลโก้หรือไอคอนมุมซ้ายบน
+local logoLabel = Instance.new("TextLabel")
+logoLabel.Size = UDim2.new(0, 45, 0, 45)
+logoLabel.BackgroundTransparency = 1
+logoLabel.Text = "💥"
+logoLabel.TextSize = 20
+logoLabel.Parent = sideBar
+
+-- ช่องค้นหาด้านบน พร้อมหัวข้อ "ไม่แจกแตกหมด"
+local searchBar = Instance.new("TextBox")
+searchBar.Size = UDim2.new(1, -60, 0, 30)
+searchBar.Position = UDim2.new(0, 55, 0, 10)
+searchBar.BackgroundColor3 = Color3.fromRGB(30, 26, 40)
+searchBar.Text = "ไม่แจกแตกหมด"
+searchBar.TextColor3 = Color3.fromRGB(255, 200, 50)
+searchBar.TextSize = 14
+searchBar.Font = Enum.Font.SourceSansBold
+searchBar.Parent = mainFrame
+
+local searchCorner = Instance.new("UICorner")
+searchCorner.CornerRadius = UDim.new(0, 6)
+searchCorner.Parent = searchBar
+
+-- ---------------------------------------------------------
+-- หน้าต่างใส่รหัสผ่าน (Login View)
+-- ---------------------------------------------------------
+local loginContainer = Instance.new("Frame")
+loginContainer.Size = UDim2.new(1, -55, 1, -50)
+loginContainer.Position = UDim2.new(0, 50, 0, 45)
+loginContainer.BackgroundTransparency = 1
+loginContainer.Parent = mainFrame
+
+local passBox = Instance.new("TextBox")
+passBox.Size = UDim2.new(0.6, 0, 0, 35)
+passBox.Position = UDim2.new(0.2, 0, 0.3, 0)
+passBox.BackgroundColor3 = Color3.fromRGB(35, 30, 45)
+passBox.PlaceholderText = "กรุณาใส่รหัสผ่าน..."
+passBox.Text = ""
+passBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+passBox.TextSize = 16
+passBox.Font = Enum.Font.SourceSans
+passBox.Parent = loginContainer
+
+local passCorner = Instance.new("UICorner")
+passCorner.CornerRadius = UDim.new(0, 6)
+passCorner.Parent = passBox
+
+local loginBtn = Instance.new("TextButton")
+loginBtn.Size = UDim2.new(0.6, 0, 0, 35)
+loginBtn.Position = UDim2.new(0.2, 0, 0.45, 0)
+loginBtn.BackgroundColor3 = Color3.fromRGB(90, 50, 150)
+loginBtn.Text = "เข้าสู่ระบบ"
+loginBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+loginBtn.TextSize = 16
+loginBtn.Font = Enum.Font.SourceSansBold
+loginBtn.Parent = loginContainer
+
+local loginBtnCorner = Instance.new("UICorner")
+loginBtnCorner.CornerRadius = UDim.new(0, 6)
+loginBtnCorner.Parent = loginBtn
+
+-- ---------------------------------------------------------
+-- ส่วนเนื้อหาหลักหลัง login ผ่าน (มีระบบดูดของ + ช่องใส่ชื่อเพื่อนแยกต่างหาก)
+-- ---------------------------------------------------------
+local contentContainer = Instance.new("Frame")
+contentContainer.Size = UDim2.new(1, -55, 1, -50)
+contentContainer.Position = UDim2.new(0, 50, 0, 45)
+contentContainer.BackgroundTransparency = 1
+contentContainer.Visible = false
+contentContainer.Parent = mainFrame
+
+local welcomeLabel = Instance.new("TextLabel")
+welcomeLabel.Size = UDim2.new(1, 0, 0, 30)
+welcomeLabel.Position = UDim2.new(0, 0, 0.02, 0)
+welcomeLabel.BackgroundTransparency = 1
+welcomeLabel.Text = "ยินดีต้อนรับเข้าสู่ระบบหลักสำเร็จ!"
+welcomeLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+welcomeLabel.TextSize = 18
+welcomeLabel.Font = Enum.Font.SourceSansBold
+welcomeLabel.Parent = contentContainer
+
+-- ปุ่มเปิด/ปิด ระบบดูดของ (Item Magnet)
+local magnetToggle = Instance.new("TextButton")
+magnetToggle.Size = UDim2.new(0.8, 0, 0, 35)
+magnetToggle.Position = UDim2.new(0.1, 0, 0.12, 0)
+magnetToggle.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+magnetToggle.Text = "ระบบดูดของ: ปิด ❌"
+magnetToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+magnetToggle.TextSize = 15
+magnetToggle.Font = Enum.Font.SourceSansBold
+magnetToggle.Parent = contentContainer
+
+local magnetCorner = Instance.new("UICorner")
+magnetCorner.CornerRadius = UDim.new(0, 6)
+magnetCorner.Parent = magnetToggle
+
+-- ช่องสำหรับกรอกชื่อเพื่อน (ช่องใครช่องมัน)
+local friendInputBox = Instance.new("TextBox")
+friendInputBox.Size = UDim2.new(0.55, 0, 0, 35)
+friendInputBox.Position = UDim2.new(0.1, 0, 0.28, 0)
+friendInputBox.BackgroundColor3 = Color3.fromRGB(35, 30, 45)
+friendInputBox.PlaceholderText = "พิมพ์ชื่อเพื่อนที่ต้องการยกเว้น..."
+friendInputBox.Text = ""
+friendInputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+friendInputBox.TextSize = 14
+friendInputBox.Font = Enum.Font.SourceSans
+friendInputBox.Parent = contentContainer
+
+local friendBoxCorner = Instance.new("UICorner")
+friendBoxCorner.CornerRadius = UDim.new(0, 6)
+friendBoxCorner.Parent = friendInputBox
+
+-- ปุ่มกดเพิ่มชื่อเพื่อนลงในรายการยกเว้น
+local addFriendBtn = Instance.new("TextButton")
+addFriendBtn.Size = UDim2.new(0.22, 0, 0, 35)
+addFriendBtn.Position = UDim2.new(0.68, 0, 0.28, 0)
+addFriendBtn.BackgroundColor3 = Color3.fromRGB(70, 40, 110)
+addFriendBtn.Text = "เพิ่มชื่อ"
+addFriendBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+addFriendBtn.TextSize = 14
+addFriendBtn.Font = Enum.Font.SourceSansBold
+addFriendBtn.Parent = contentContainer
+
+local addBtnCorner = Instance.new("UICorner")
+addBtnCorner.CornerRadius = UDim.new(0, 6)
+addBtnCorner.Parent = addFriendBtn
+
+-- ข้อความแสดงรายชื่อเพื่อนที่ถูกเพิ่มเข้ามาแล้ว
+local friendListLabel = Instance.new("TextLabel")
+friendListLabel.Size = UDim2.new(0.8, 0, 0, 80)
+friendListLabel.Position = UDim2.new(0.1, 0, 0.42, 0)
+friendListLabel.BackgroundColor3 = Color3.fromRGB(25, 22, 35)
+friendListLabel.Text = "รายชื่อที่ยกเว้น (ยังไม่มี):"
+friendListLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+friendListLabel.TextSize = 13
+friendListLabel.Font = Enum.Font.SourceSans
+friendListLabel.TextXAlignment = Enum.TextXAlignment.Left
+friendListLabel.TextYAlignment = Enum.TextYAlignment.Top
+friendListLabel.Parent = contentContainer
+
+local listCorner = Instance.new("UICorner")
+listCorner.CornerRadius = UDim.new(0, 6)
+listCorner.Parent = friendListLabel
+
+-- ฟังก์ชันอัปเดตข้อความรายชื่อเพื่อนบนหน้าจอ
+local function updateFriendDisplay()
+    if #whitelistedFriends == 0 then
+        friendListLabel.Text = "รายชื่อที่ยกเว้น (ยังไม่มี):"
+    else
+        friendListLabel.Text = "รายชื่อที่ยกเว้น:\n- " .. table.concat(whitelistedFriends, "\n- ")
+    end
+end
+
+-- กดปุ่มเพิ่มชื่อเพื่อน
+addFriendBtn.MouseButton1Click:Connect(function()
+    local nameToAdd = friendInputBox.Text
+    if nameToAdd ~= "" then
+        -- เช็คว่ามีชื่อนี้ในตารางหรือยัง
+        local found = false
+        for _, name in ipairs(whitelistedFriends) do
+            if name == nameToAdd then
+                found = true
+                break
+            end
+        end
+        
+        if not found then
+            table.insert(whitelistedFriends, nameToAdd)
+            updateFriendDisplay()
+            friendInputBox.Text = ""
+            friendInputBox.PlaceholderText = "เพิ่มสำเร็จ! ใส่ชื่อถัดไป..."
+        else
+            friendInputBox.Text = ""
+            friendInputBox.PlaceholderText = "มีชื่อนี้อยู่แล้ว!"
+        end
+    end
+end)
+
+-- ตัวแปรการทำงานระบบดูดของ
+local magnetEnabled = false
+local magnetConnection
+
+magnetToggle.MouseButton1Click:Connect(function()
+    magnetEnabled = not magnetEnabled
+    if magnetEnabled then
+        magnetToggle.Text = "ระบบดูดของ: เปิด ✅"
+        magnetToggle.TextColor3 = Color3.fromRGB(100, 255, 100)
+        magnetToggle.BackgroundColor3 = Color3.fromRGB(60, 40, 90)
+        
+        -- ลูปทำงานดูดของทุกๆ เฟรม
+        magnetConnection = runService.RenderStepped:Connect(function()
+            local character = localPlayer.Character
+            if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+            local rootPart = character.HumanoidRootPart
+            
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("TouchTransmitter") and obj.Parent and obj.Parent:IsA("BasePart") then
+                    if (obj.Parent.Position - rootPart.Position).Magnitude <= 50 then
+                        obj.Parent.CFrame = rootPart.CFrame
+                    end
+                end
+            end
+        end)
+    else
+        magnetToggle.Text = "ระบบดูดของ: ปิด ❌"
+        magnetToggle.TextColor3 = Color3.fromRGB(255, 100, 100)
+        magnetToggle.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+        
+        if magnetConnection then
+            magnetConnection:Disconnect()
+            magnetConnection = nil
+        end
+    end
+end)
+
+-- ระบบตรวจสอบรหัสผ่าน
+loginBtn.MouseButton1Click:Connect(function()
+    if passBox.Text == correctPassword then
+        loginContainer.Visible = false
+        contentContainer.Visible = true
+    else
+        passBox.Text = ""
+        passBox.PlaceholderText = "รหัสผ่านไม่ถูกต้อง!"
+    end
+end)
